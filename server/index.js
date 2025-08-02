@@ -42,7 +42,7 @@ const protect = (req, res, next) => {
 // --- 3. SOCKET.IO REAL-TIME LOGIC ---
 const io = new Server(server, { 
     cors: { 
-        origin: ["http://localhost:3000", "https://your-netlify-app-name.netlify.app"], // Add your future Netlify URL here
+        origin: ["http://localhost:3000", "https://linkspacez.netlify.app/login"], // Add your future Netlify URL here
         methods: ["GET", "POST"] 
     } 
 });

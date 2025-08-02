@@ -1,6 +1,6 @@
 
 
-const API_URL = 'https://your-render-app-name.onrender.com/api';
+const API_URL = 'https://linkspace-clwr.onrender.com';
 
 const apiRequest = async (endpoint, method = 'GET', body = null) => {
     const config = {
