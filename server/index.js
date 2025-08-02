@@ -27,7 +27,7 @@ const server = http.createServer(app);
 // --- 2. MIDDLEWARE & AUTH ---
 app.use(cors());
 app.use(express.json());
-const JWT_SECRET = 'your-super-secret-key-that-should-be-in-a-env-file';
+const JWT_SECRET = 'B4D7F9A2E1C8G3H6J9K2M5N8PQR4T7W9Z$C&F)J@NcRfUjXn2r5u8x/A%D*G-KaPdSgVkY';
 const protect = (req, res, next) => {
     const token = req.headers.authorization?.split(' ')[1];
     if (!token) return res.status(401).json({ message: 'Not authorized' });

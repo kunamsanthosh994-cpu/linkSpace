@@ -1,3 +1,7 @@
+// =======================================================================
+// FILE: client/src/pages/ChatPage.js
+// ** UPDATED FILE **
+// =======================================================================
 import React, { useState, useEffect } from 'react';
 import apiRequest from '../services/api';
 import { socket } from '../services/socket';
@@ -17,14 +21,19 @@ const ChatPage = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [onlineUsers, setOnlineUsers] = useState([]);
     const { user } = useAuth();
+
     useEffect(() => {
         if (!user) return;
+
         const fetchConversations = async () => {
             setIsLoading(true);
             try {
                 const data = await apiRequest('/conversations');
                 setConversations(data);
-                if (data.length > 0 && !selectedConversation) {
+                // **FIX**: The warning was because this line depended on selectedConversation
+                // but it wasn't in the dependency array. We can safely remove it
+                // as this effect should only run once when the user loads.
+                if (data.length > 0) {
                     setSelectedConversation(data[0]);
                 }
             } catch (error) {
@@ -34,10 +43,12 @@ const ChatPage = () => {
             }
         };
         fetchConversations();
+        
         const handleNewConversation = (newConversation) => {
             setConversations(prev => [newConversation, ...prev]);
         };
         socket.on('newConversation', handleNewConversation);
+
         const handleUpdateUnreadCount = ({ conversationId, count }) => {
             setConversations(prevConvos => 
                 prevConvos.map(convo => 
@@ -48,20 +59,24 @@ const ChatPage = () => {
             );
         };
         socket.on('updateUnreadCount', handleUpdateUnreadCount);
+
         const handleOnlineUsers = (users) => {
             setOnlineUsers(users);
         };
         socket.on('onlineUsers', handleOnlineUsers);
+
         return () => {
             socket.off('newConversation', handleNewConversation);
             socket.off('updateUnreadCount', handleUpdateUnreadCount);
             socket.off('onlineUsers', handleOnlineUsers);
         };
-    }, [user]);
+    }, [user]); // This is correct, it should only depend on the user object.
+
     const handleConversationJoined = (newConversation) => {
         setConversations(prev => [newConversation, ...prev]);
         setSelectedConversation(newConversation);
     };
+
     const handleSelectConversation = (conversation) => {
         setSelectedConversation(conversation);
         if (user && conversation.unreadCounts && conversation.unreadCounts[user.id] > 0) {
@@ -75,6 +90,7 @@ const ChatPage = () => {
             );
         }
     };
+
     return (
         <>
             <div className="bg-[#1e1f24] font-sans flex h-screen text-white">
@@ -108,4 +124,5 @@ const ChatPage = () => {
         </>
     );
 };
+
 export default ChatPage;
