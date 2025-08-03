@@ -12,10 +12,16 @@ const jwt = require('jsonwebtoken');
 const fs = require('fs');
 const { customAlphabet } = require('nanoid');
 
+// **THE FIX**: Initialize Firebase from an environment variable instead of a file.
 let serviceAccount;
 if (process.env.GOOGLE_CREDENTIALS_JSON) {
     // On Railway, the credentials will be in an environment variable.
-    serviceAccount = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
+    try {
+        serviceAccount = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
+    } catch (e) {
+        console.error("FATAL ERROR: Could not parse GOOGLE_CREDENTIALS_JSON.", e);
+        process.exit(1);
+    }
 } else {
     // On your local computer, it will still look for the file.
     const serviceAccountPath = './serviceAccountKey.json';
@@ -30,16 +36,21 @@ initializeApp({ credential: cert(serviceAccount) });
 const db = getFirestore();
 const app = express();
 const server = http.createServer(app);
+
 // --- 2. MIDDLEWARE & AUTH ---
-
-
 const allowedOrigins = [
     "http://localhost:3000",
-    "https://linkspacez.netlify.app",
-    "https://688eb7eccb2b7fccee81e43c--linkspacez.netlify.app" 
+    "https://linkspacez.netlify.app"
 ];
-
-app.use(cors({ origin: allowedOrigins }));
+const corsOptions = {
+    origin: (origin, callback) => {
+        if (!origin || allowedOrigins.indexOf(origin) !== -1 || /\.netlify\.app$/.test(origin)) {
+            return callback(null, true);
+        }
+        return callback(new Error('CORS policy does not allow access from the specified Origin.'), false);
+    }
+};
+app.use(cors(corsOptions));
 app.use(express.json());
 const JWT_SECRET = 'B4D7F9A2E1C8G3H6J9K2M5N8PQR4T7W9Z$C&F)J@NcRfUjXn2r5u8x/A%D*G-KaPdSgVkY';
 const protect = (req, res, next) => {
@@ -54,30 +65,20 @@ const protect = (req, res, next) => {
 };
 
 // --- 3. SOCKET.IO REAL-TIME LOGIC ---
-const io = new Server(server, { 
-    cors: { 
-        // **FIX**: Explicitly list the allowed origins
-        origin: ["http://localhost:3000", "https://688e0e8c6497540008906ea5--linkspacez.netlify.app/login"],
-        methods: ["GET", "POST"] 
-    } 
-});
+const io = new Server(server, { cors: corsOptions });
 const userSockets = {};
 const onlineUsers = new Set();
 
 io.on('connection', (socket) => {
     console.log(`✅ User Connected: ${socket.id}`);
-    
     socket.on('storeUserId', (userId) => {
         userSockets[userId] = socket.id;
         onlineUsers.add(userId);
-        io.emit('onlineUsers', Array.from(onlineUsers)); // Broadcast updated online list
-        console.log(`Stored user ${userId}. Online users:`, onlineUsers.size);
+        io.emit('onlineUsers', Array.from(onlineUsers));
     });
-
     socket.on('joinConversation', (conversationId) => {
         socket.join(conversationId);
     });
-
     socket.on('sendMessage', async ({ conversationId, senderId, text }) => {
         try {
             const userDoc = await db.collection('users').doc(senderId).get();
@@ -111,14 +112,12 @@ io.on('connection', (socket) => {
             console.error("Error sending message:", error);
         }
     });
-
     socket.on('disconnect', () => {
         for (const userId in userSockets) {
             if (userSockets[userId] === socket.id) {
                 delete userSockets[userId];
                 onlineUsers.delete(userId);
-                io.emit('onlineUsers', Array.from(onlineUsers)); // Broadcast updated online list
-                console.log(`Cleaned up user ${userId}. Online users:`, onlineUsers.size);
+                io.emit('onlineUsers', Array.from(onlineUsers));
                 break;
             }
         }
@@ -127,45 +126,6 @@ io.on('connection', (socket) => {
 });
 
 // --- 4. API ROUTES ---
-
-app.get('/api/conversations', protect, async (req, res) => {
-    try {
-        const snapshot = await db.collection('conversations').where('participants', 'array-contains', req.user.id).orderBy('lastMessageTimestamp', 'desc').get();
-        const conversations = await Promise.all(snapshot.docs.map(async doc => {
-            const data = doc.data();
-            let name = data.name;
-            let avatar;
-            let otherParticipantId = null; 
-
-            if (data.type === 'private') {
-                otherParticipantId = data.participants.find(p => p !== req.user.id);
-                if (otherParticipantId) {
-                    const userDoc = await db.collection('users').doc(otherParticipantId).get();
-                    if (userDoc.exists) {
-                        name = userDoc.data().username;
-                        avatar = `https://placehold.co/100x100/6366f1/ffffff?text=${name.charAt(0).toUpperCase()}`;
-                    }
-                }
-            } else { 
-                avatar = `https://placehold.co/100x100/10b981/ffffff?text=${name.charAt(0).toUpperCase()}`;
-            }
-            return { id: doc.id, ...data, name, avatar, otherParticipantId };
-        }));
-        res.json(conversations);
-    } catch (error) { res.status(500).json({ message: 'Failed to fetch conversations' }); }
-});
-
-// Other routes remain unchanged...
-app.get('/api/users/:id', protect, async (req, res) => {
-    try {
-        const userDoc = await db.collection('users').doc(req.params.id).get();
-        if (!userDoc.exists) return res.status(404).json({ message: 'User not found' });
-        const { username, email, createdAt } = userDoc.data();
-        res.json({ id: userDoc.id, username, email, createdAt });
-    } catch (error) {
-        res.status(500).json({ message: 'Server error fetching user profile' });
-    }
-});
 app.get('/api/auth/me', protect, async (req, res) => {
     try {
         const userDoc = await db.collection('users').doc(req.user.id).get();
@@ -251,7 +211,6 @@ app.post('/api/groups/create', protect, async (req, res) => {
         const newGroupRef = await db.collection('conversations').add(newGroupData);
         res.status(201).json({ message: 'Group created successfully!', conversation: { id: newGroupRef.id, ...newGroupData, avatar: `https://placehold.co/100x100/10b981/ffffff?text=${name.charAt(0).toUpperCase()}` } });
     } catch (error) {
-        console.error("Create Group Error:", error);
         res.status(500).json({ message: 'Server error while creating group' });
     }
 });
@@ -286,7 +245,6 @@ app.post('/api/groups/join', protect, async (req, res) => {
         });
         res.status(200).json({ message: 'Joined group successfully!', conversation: { ...groupData, id: groupId, participants: [...groupData.participants, userId], avatar: `https://placehold.co/100x100/10b981/ffffff?text=${groupData.name.charAt(0).toUpperCase()}` } });
     } catch (error) {
-        console.error("Join Group Error:", error);
         res.status(500).json({ message: 'Server error while joining group' });
     }
 });
@@ -301,6 +259,31 @@ app.post('/api/conversations/:id/read', protect, async (req, res) => {
         res.status(500).json({ message: 'Failed to mark as read' });
     }
 });
+app.get('/api/conversations', protect, async (req, res) => {
+    try {
+        const snapshot = await db.collection('conversations').where('participants', 'array-contains', req.user.id).orderBy('lastMessageTimestamp', 'desc').get();
+        const conversations = await Promise.all(snapshot.docs.map(async doc => {
+            const data = doc.data();
+            let name = data.name;
+            let avatar;
+            let otherParticipantId = null;
+            if (data.type === 'private') {
+                otherParticipantId = data.participants.find(p => p !== req.user.id);
+                if (otherParticipantId) {
+                    const userDoc = await db.collection('users').doc(otherParticipantId).get();
+                    if (userDoc.exists) {
+                        name = userDoc.data().username;
+                        avatar = `https://placehold.co/100x100/6366f1/ffffff?text=${name.charAt(0).toUpperCase()}`;
+                    }
+                }
+            } else {
+                avatar = `https://placehold.co/100x100/10b981/ffffff?text=${name.charAt(0).toUpperCase()}`;
+            }
+            return { id: doc.id, ...data, name, avatar, otherParticipantId };
+        }));
+        res.json(conversations);
+    } catch (error) { res.status(500).json({ message: 'Failed to fetch conversations' }); }
+});
 app.get('/api/conversations/:id/messages', protect, async (req, res) => {
     try {
         const { id } = req.params;
@@ -314,5 +297,5 @@ app.get('/api/conversations/:id/messages', protect, async (req, res) => {
 });
 
 // --- 5. SERVER START ---
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 8080; // Railway provides the PORT variable
 server.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
