@@ -19,6 +19,7 @@ if (process.env.GOOGLE_CREDENTIALS_JSON) {
         // Decode the Base64 string back into a JSON object.
         const decodedCredentials = Buffer.from(process.env.GOOGLE_CREDENTIALS_JSON, 'base64').toString('ascii');
         serviceAccount = JSON.parse(decodedCredentials);
+        console.log("Successfully parsed Firebase credentials from environment variable.");
     } catch (e) {
         console.error("FATAL ERROR: Could not parse GOOGLE_CREDENTIALS_JSON from Base64.", e);
         process.exit(1);
@@ -31,6 +32,7 @@ if (process.env.GOOGLE_CREDENTIALS_JSON) {
         process.exit(1);
     }
     serviceAccount = require(serviceAccountPath);
+    console.log("Successfully loaded Firebase credentials from local file.");
 }
 
 initializeApp({ credential: cert(serviceAccount) });
@@ -127,6 +129,9 @@ io.on('connection', (socket) => {
 });
 
 // --- 4. API ROUTES ---
+app.get("/", (req, res) => {
+    res.send("LinkSpace Server is running!");
+});
 app.get('/api/auth/me', protect, async (req, res) => {
     try {
         const userDoc = await db.collection('users').doc(req.user.id).get();
@@ -299,4 +304,4 @@ app.get('/api/conversations/:id/messages', protect, async (req, res) => {
 
 // --- 5. SERVER START ---
 const PORT = process.env.PORT || 8080;
-server.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
