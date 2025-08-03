@@ -1,0 +1,12 @@
+# File: server/nixpacks.toml
+
+# Tell Railway to use the Node.js environment
+providers = ["node"]
+
+# Specify the build command
+[phases.build]
+cmds = ["npm install"]
+
+# Specify the start command
+[start]
+cmd = ["node index.js"]
