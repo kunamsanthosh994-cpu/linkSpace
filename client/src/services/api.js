@@ -1,7 +1,34 @@
-// client/src/services/api.js
-const API_URL = '/api'; // It's now a relative path
+// =======================================================================
+// FILE: client/src/services/api.js
+// ** FINAL CORRECTED VERSION **
+// =======================================================================
+const API_URL = 'https://linkspace-production.up.railway.app/api'; // Your live Railway URL
 
 const apiRequest = async (endpoint, method = 'GET', body = null) => {
-    // ... (rest of the file is unchanged)
+    const config = {
+        method,
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    };
+    const token = localStorage.getItem('chat_token');
+    if (token) {
+        config.headers['Authorization'] = `Bearer ${token}`;
+    }
+    if (body) {
+        config.body = JSON.stringify(body);
+    }
+    try {
+        const response = await fetch(`${API_URL}${endpoint}`, config);
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || 'Something went wrong');
+        }
+        if (response.status === 204) return null;
+        return response.json();
+    } catch (err) {
+        console.error(`API Error on ${method} ${endpoint}:`, err);
+        throw err;
+    }
 };
 export default apiRequest;
