@@ -25,7 +25,9 @@ const app = express();
 const server = http.createServer(app);
 
 // --- 2. MIDDLEWARE & AUTH ---
-app.use(cors());
+app.use(cors({
+    origin: ["http://localhost:3000", "https://688e0e8c6497540008906ea5--linkspacez.netlify.app/login"]
+}));
 app.use(express.json());
 const JWT_SECRET = 'B4D7F9A2E1C8G3H6J9K2M5N8PQR4T7W9Z$C&F)J@NcRfUjXn2r5u8x/A%D*G-KaPdSgVkY';
 const protect = (req, res, next) => {
@@ -42,7 +44,8 @@ const protect = (req, res, next) => {
 // --- 3. SOCKET.IO REAL-TIME LOGIC ---
 const io = new Server(server, { 
     cors: { 
-        origin: ["http://localhost:3000", "https://linkspacez.netlify.app/login"], // Add your future Netlify URL here
+        // **FIX**: Explicitly list the allowed origins
+        origin: ["http://localhost:3000", "https://688e0e8c6497540008906ea5--linkspacez.netlify.app/login"],
         methods: ["GET", "POST"] 
     } 
 });
