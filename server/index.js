@@ -3,6 +3,7 @@
 // --- 1. SETUP ---
 const express = require('express');
 const http = require('http');
+const path = require('path'); // Import the 'path' module
 const { Server } = require('socket.io');
 const cors = require('cors');
 const { initializeApp, cert } = require('firebase-admin/app');
@@ -12,11 +13,10 @@ const jwt = require('jsonwebtoken');
 const fs = require('fs');
 const { customAlphabet } = require('nanoid');
 
-// **THE FINAL FIX**: Initialize Firebase from a Base64 encoded environment variable.
+// **THE FIX**: Initialize Firebase from a Base64 encoded environment variable.
 let serviceAccount;
 if (process.env.GOOGLE_CREDENTIALS_JSON) {
     try {
-        // Decode the Base64 string back into a JSON object.
         const decodedCredentials = Buffer.from(process.env.GOOGLE_CREDENTIALS_JSON, 'base64').toString('ascii');
         serviceAccount = JSON.parse(decodedCredentials);
         console.log("Successfully parsed Firebase credentials from environment variable.");
@@ -40,21 +40,13 @@ const db = getFirestore();
 const app = express();
 const server = http.createServer(app);
 
-// --- 2. MIDDLEWARE & AUTH ---
-const allowedOrigins = [
-    "http://localhost:3000",
-    "https://linkspacez.netlify.app"
-];
-const corsOptions = {
-    origin: (origin, callback) => {
-        if (!origin || allowedOrigins.indexOf(origin) !== -1 || /\.netlify\.app$/.test(origin)) {
-            return callback(null, true);
-        }
-        return callback(new Error('CORS policy does not allow access from the specified Origin.'), false);
-    }
-};
-app.use(cors(corsOptions));
+// --- 2. MIDDLEWARE & STATIC FILE SERVING ---
+app.use(cors());
 app.use(express.json());
+
+// Serve the static files from the React app's build directory
+app.use(express.static(path.join(__dirname, '../client/build')));
+
 const JWT_SECRET = 'B4D7F9A2E1C8G3H6J9K2M5N8PQR4T7W9Z$C&F)J@NcRfUjXn2r5u8x/A%D*G-KaPdSgVkY';
 const protect = (req, res, next) => {
     const token = req.headers.authorization?.split(' ')[1];
@@ -68,7 +60,7 @@ const protect = (req, res, next) => {
 };
 
 // --- 3. SOCKET.IO REAL-TIME LOGIC ---
-const io = new Server(server, { cors: corsOptions });
+const io = new Server(server, { cors: { origin: "*" } });
 const userSockets = {};
 const onlineUsers = new Set();
 
@@ -129,10 +121,9 @@ io.on('connection', (socket) => {
 });
 
 // --- 4. API ROUTES ---
-app.get("/", (req, res) => {
-    res.send("LinkSpace Server is running!");
-});
-app.get('/api/auth/me', protect, async (req, res) => {
+const apiRouter = express.Router();
+
+apiRouter.get('/auth/me', protect, async (req, res) => {
     try {
         const userDoc = await db.collection('users').doc(req.user.id).get();
         if (!userDoc.exists) return res.status(404).json({ message: 'User not found' });
@@ -140,7 +131,7 @@ app.get('/api/auth/me', protect, async (req, res) => {
         res.json({ id: userDoc.id, username: userData.username, email: userData.email, inviteCode: userData.inviteCode });
     } catch (error) { res.status(500).json({ message: 'Server error' }); }
 });
-app.post('/api/auth/register', async (req, res) => {
+apiRouter.post('/auth/register', async (req, res) => {
     const { username, email, password } = req.body;
     if (!username || !email || !password) return res.status(400).json({ message: 'Please enter all fields' });
     try {
@@ -163,7 +154,7 @@ app.post('/api/auth/register', async (req, res) => {
         res.status(201).json({ token, user: { id: newUserRef.id, username, email, inviteCode } });
     } catch (error) { res.status(500).json({ message: 'Server error' }); }
 });
-app.post('/api/auth/login', async (req, res) => {
+apiRouter.post('/auth/login', async (req, res) => {
     const { email, password } = req.body;
     try {
         const usersRef = db.collection('users');
@@ -177,7 +168,7 @@ app.post('/api/auth/login', async (req, res) => {
         res.json({ token, user: { id: userDoc.id, username: userData.username, email: userData.email, inviteCode: userData.inviteCode } });
     } catch (error) { res.status(500).json({ message: 'Server error' }); }
 });
-app.post('/api/friends/add', protect, async (req, res) => {
+apiRouter.post('/friends/add', protect, async (req, res) => {
     const { inviteCode } = req.body;
     const currentUserId = req.user.id;
     if (!inviteCode) return res.status(400).json({ message: 'Invite code is required' });
@@ -204,102 +195,12 @@ app.post('/api/friends/add', protect, async (req, res) => {
         res.status(201).json({ message: 'Friend added successfully!', conversation: { id: newConversationRef.id, ...newConversationData, name: friendData.username, avatar: `https://placehold.co/100x100/6366f1/ffffff?text=${friendData.username.charAt(0).toUpperCase()}` } });
     } catch (error) { res.status(500).json({ message: 'Server error' }); }
 });
-app.post('/api/groups/create', protect, async (req, res) => {
-    const { name } = req.body;
-    const creatorId = req.user.id;
-    if (!name) return res.status(400).json({ message: 'Group name is required' });
-    try {
-        const nanoid = customAlphabet('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', 8);
-        const inviteCode = `${nanoid().slice(0, 4)}-${nanoid().slice(4, 8)}`;
-        const creatorDoc = await db.collection('users').doc(creatorId).get();
-        const creatorUsername = creatorDoc.exists ? creatorDoc.data().username : 'A user';
-        const newGroupData = { name, type: 'group', participants: [creatorId], admins: [creatorId], inviteCode, createdAt: Timestamp.now(), lastMessage: `Group created by ${creatorUsername}`, lastMessageTimestamp: Timestamp.now(), unreadCounts: { [creatorId]: 0 } };
-        const newGroupRef = await db.collection('conversations').add(newGroupData);
-        res.status(201).json({ message: 'Group created successfully!', conversation: { id: newGroupRef.id, ...newGroupData, avatar: `https://placehold.co/100x100/10b981/ffffff?text=${name.charAt(0).toUpperCase()}` } });
-    } catch (error) {
-        res.status(500).json({ message: 'Server error while creating group' });
-    }
-});
-app.post('/api/groups/join', protect, async (req, res) => {
-    const { inviteCode } = req.body;
-    const userId = req.user.id;
-    if (!inviteCode) return res.status(400).json({ message: 'Invite code is required' });
-    try {
-        const conversationsRef = db.collection('conversations');
-        const groupSnapshot = await conversationsRef.where('inviteCode', '==', inviteCode.toUpperCase()).limit(1).get();
-        if (groupSnapshot.empty) return res.status(404).json({ message: 'Group with this invite code not found' });
-        const groupDoc = groupSnapshot.docs[0];
-        const groupId = groupDoc.id;
-        const groupData = groupDoc.data();
-        if (groupData.participants.includes(userId)) {
-            return res.status(400).json({ message: 'You are already in this group' });
-        }
-        await conversationsRef.doc(groupId).update({
-            participants: FieldValue.arrayUnion(userId),
-            [`unreadCounts.${userId}`]: 0
-        });
-        const userDoc = await db.collection('users').doc(userId).get();
-        const username = userDoc.exists ? userDoc.data().username : 'A new user';
-        const joinMessage = `${username} has joined the group.`;
-        await conversationsRef.doc(groupId).collection('messages').add({ senderId: 'system', text: joinMessage, timestamp: Timestamp.now() });
-        await conversationsRef.doc(groupId).update({ lastMessage: joinMessage, lastMessageTimestamp: Timestamp.now() });
-        groupData.participants.forEach(participantId => {
-            const socketId = userSockets[participantId];
-            if (socketId) {
-                io.to(socketId).emit('userJoinedGroup', { groupId, newParticipantId: userId, newParticipantUsername: username });
-            }
-        });
-        res.status(200).json({ message: 'Joined group successfully!', conversation: { ...groupData, id: groupId, participants: [...groupData.participants, userId], avatar: `https://placehold.co/100x100/10b981/ffffff?text=${groupData.name.charAt(0).toUpperCase()}` } });
-    } catch (error) {
-        res.status(500).json({ message: 'Server error while joining group' });
-    }
-});
-app.post('/api/conversations/:id/read', protect, async (req, res) => {
-    try {
-        const { id } = req.params;
-        const userId = req.user.id;
-        const conversationRef = db.collection('conversations').doc(id);
-        await conversationRef.update({ [`unreadCounts.${userId}`]: 0 });
-        res.status(204).send();
-    } catch (error) {
-        res.status(500).json({ message: 'Failed to mark as read' });
-    }
-});
-app.get('/api/conversations', protect, async (req, res) => {
-    try {
-        const snapshot = await db.collection('conversations').where('participants', 'array-contains', req.user.id).orderBy('lastMessageTimestamp', 'desc').get();
-        const conversations = await Promise.all(snapshot.docs.map(async doc => {
-            const data = doc.data();
-            let name = data.name;
-            let avatar;
-            let otherParticipantId = null;
-            if (data.type === 'private') {
-                otherParticipantId = data.participants.find(p => p !== req.user.id);
-                if (otherParticipantId) {
-                    const userDoc = await db.collection('users').doc(otherParticipantId).get();
-                    if (userDoc.exists) {
-                        name = userDoc.data().username;
-                        avatar = `https://placehold.co/100x100/6366f1/ffffff?text=${name.charAt(0).toUpperCase()}`;
-                    }
-                }
-            } else {
-                avatar = `https://placehold.co/100x100/10b981/ffffff?text=${name.charAt(0).toUpperCase()}`;
-            }
-            return { id: doc.id, ...data, name, avatar, otherParticipantId };
-        }));
-        res.json(conversations);
-    } catch (error) { res.status(500).json({ message: 'Failed to fetch conversations' }); }
-});
-app.get('/api/conversations/:id/messages', protect, async (req, res) => {
-    try {
-        const { id } = req.params;
-        const conversationRef = db.collection('conversations').doc(id);
-        const conversationDoc = await conversationRef.get();
-        if (!conversationDoc.exists || !conversationDoc.data().participants.includes(req.user.id)) return res.status(403).json({ message: 'Not authorized' });
-        const messagesSnapshot = await conversationRef.collection('messages').orderBy('timestamp', 'asc').get();
-        const messages = messagesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        res.json(messages);
-    } catch (error) { res.status(500).json({ message: 'Failed to fetch messages' }); }
+
+app.use('/api', apiRouter);
+
+// The "catchall" handler: for any request that doesn't match one above, send back React's index.html file.
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../client/build', 'index.html'));
 });
 
 // --- 5. SERVER START ---
