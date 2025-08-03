@@ -1,4 +1,4 @@
-const API_URL = 'https://linkspace-clwr.onrender.com/api'; // Use your actual Render server URL
+const API_URL = 'linkspace-production.up.railway.app'; // Use your actual Render server URL
 
 const apiRequest = async (endpoint, method = 'GET', body = null) => {
     const config = {
