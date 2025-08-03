@@ -12,21 +12,22 @@ const jwt = require('jsonwebtoken');
 const fs = require('fs');
 const { customAlphabet } = require('nanoid');
 
-// **THE FIX**: Initialize Firebase from an environment variable instead of a file.
+// **THE FINAL FIX**: Initialize Firebase from a Base64 encoded environment variable.
 let serviceAccount;
 if (process.env.GOOGLE_CREDENTIALS_JSON) {
-    // On Railway, the credentials will be in an environment variable.
     try {
-        serviceAccount = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
+        // Decode the Base64 string back into a JSON object.
+        const decodedCredentials = Buffer.from(process.env.GOOGLE_CREDENTIALS_JSON, 'base64').toString('ascii');
+        serviceAccount = JSON.parse(decodedCredentials);
     } catch (e) {
-        console.error("FATAL ERROR: Could not parse GOOGLE_CREDENTIALS_JSON.", e);
+        console.error("FATAL ERROR: Could not parse GOOGLE_CREDENTIALS_JSON from Base64.", e);
         process.exit(1);
     }
 } else {
-    // On your local computer, it will still look for the file.
+    // Fallback for local development
     const serviceAccountPath = './serviceAccountKey.json';
     if (!fs.existsSync(serviceAccountPath)) {
-        console.error("FATAL ERROR: Firebase serviceAccountKey.json not found.");
+        console.error("FATAL ERROR: Firebase serviceAccountKey.json not found for local development.");
         process.exit(1);
     }
     serviceAccount = require(serviceAccountPath);
@@ -297,5 +298,5 @@ app.get('/api/conversations/:id/messages', protect, async (req, res) => {
 });
 
 // --- 5. SERVER START ---
-const PORT = process.env.PORT || 8080; // Railway provides the PORT variable
+const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
