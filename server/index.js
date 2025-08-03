@@ -25,31 +25,15 @@ const app = express();
 const server = http.createServer(app);
 
 // --- 2. MIDDLEWARE & AUTH ---
+
+
 const allowedOrigins = [
     "http://localhost:3000",
-    "https://688e0e8c6497540008906ea5--linkspacez.netlify.app",
-    "https://linkspacez.netlify.app" // Add your custom domain here too if you have one
+    "https://linkspacez.netlify.app",
+    "https://688eb7eccb2b7fccee81e43c--linkspacez.netlify.app" 
 ];
-const corsOptions = {
-    origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps or curl requests)
-        if (!origin) return callback(null, true);
 
-        // Allow main site and localhost
-        if (allowedOrigins.indexOf(origin) !== -1) {
-            return callback(null, true);
-        }
-
-        // Allow any Netlify deploy preview URL
-        if (/\.netlify\.app$/.test(origin)) {
-            return callback(null, true);
-        }
-        
-        return callback(new Error('The CORS policy for this site does not allow access from the specified Origin.'), false);
-    }
-};
-
-app.use(cors(corsOptions));
+app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
 const JWT_SECRET = 'B4D7F9A2E1C8G3H6J9K2M5N8PQR4T7W9Z$C&F)J@NcRfUjXn2r5u8x/A%D*G-KaPdSgVkY';
 const protect = (req, res, next) => {
