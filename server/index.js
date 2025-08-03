@@ -25,6 +25,11 @@ const app = express();
 const server = http.createServer(app);
 
 // --- 2. MIDDLEWARE & AUTH ---
+const allowedOrigins = [
+    "http://localhost:3000",
+    "https://688e0e8c6497540008906ea5--linkspacez.netlify.app",
+    "https://linkspacez.netlify.app" // Add your custom domain here too if you have one
+];
 app.use(cors({
     origin: ["http://localhost:3000", "https://688e0e8c6497540008906ea5--linkspacez.netlify.app/login"]
 }));
