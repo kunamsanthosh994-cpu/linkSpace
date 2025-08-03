@@ -12,18 +12,24 @@ const jwt = require('jsonwebtoken');
 const fs = require('fs');
 const { customAlphabet } = require('nanoid');
 
-const serviceAccountPath = './serviceAccountKey.json';
-if (!fs.existsSync(serviceAccountPath)) {
-    console.error("FATAL ERROR: Firebase serviceAccountKey.json not found.");
-    process.exit(1);
+let serviceAccount;
+if (process.env.GOOGLE_CREDENTIALS_JSON) {
+    // On Railway, the credentials will be in an environment variable.
+    serviceAccount = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
+} else {
+    // On your local computer, it will still look for the file.
+    const serviceAccountPath = './serviceAccountKey.json';
+    if (!fs.existsSync(serviceAccountPath)) {
+        console.error("FATAL ERROR: Firebase serviceAccountKey.json not found.");
+        process.exit(1);
+    }
+    serviceAccount = require(serviceAccountPath);
 }
-const serviceAccount = require(serviceAccountPath);
 
 initializeApp({ credential: cert(serviceAccount) });
 const db = getFirestore();
 const app = express();
 const server = http.createServer(app);
-
 // --- 2. MIDDLEWARE & AUTH ---
 
 
